@@ -1,1 +1,13 @@
 学习笔记
+    1.产生式 
+        <BracketExpression>::= 
+            <Number>|"("<AddtiveExpression>")"| 
+        <AddtiveExpression>::=
+            <MultiplicativeExpression>|<AddtiveExpression>"+"<MultiplicativeExpression>|<AddtiveExpression>"-"<MultiplicativeExpression>|
+        <MultiplicativeExpression>::=
+            <BracketExpression>|
+            <MultiplicativeExpression>"*"<BracketExpression>|
+            <MultiplicativeExpression>"/"<BracketExpression>|
+    2.浮点数对应的二进制表示
+    2.字符串转utf8，根据8位能表示的最大上限加上控制位按位与出对应的二进制，或根据字符串对应的encodeURI
+    3.对象原型链
