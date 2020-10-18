@@ -25,7 +25,7 @@ class Request {
         try{
             return new Promise((resolve, reject)=>{
                 const parser = new ResponseParser;
-                console.log('connection',connection);
+                // console.log('connection',connection);
                 if(connection){
                     connection.write(this.toString());
                 }else{
@@ -34,13 +34,13 @@ class Request {
                         port: this.port,
     
                     }, ()=>{
-                        console.log(this.toString());
+                        // console.log(this.toString());
                         connection.write(this.toString());
                     })
                 }
     
                 connection.on('data',data=>{
-                    console.log(data.toString());
+                    // console.log(data.toString());
                     parser.receive(data.toString());
                     if(parser.isFinished){
                         resolve(parser.response);
@@ -213,8 +213,9 @@ void async function(){
             name: 'test'
         }
     })
-    console.log(request);
+    // console.log(request);
     let response = await request.send();
-    console.log(response);
+    // console.log(response);
     let dom = parser.parseHtml(response.body);
+    console.log(JSON.stringify(dom, null, '    '));
 }();
