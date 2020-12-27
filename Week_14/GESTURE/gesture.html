@@ -1,0 +1,234 @@
+<body oncontextmenu="event.preventDefault()"></body>
+<script type="module">
+
+    class Dispatcher{
+        constructor(element){
+            this.element = element
+        }
+        dispatch(type, properties){
+            let event = new Event(type);
+            for(let name in properties){
+                event[name] = properties[name];
+            }
+            this.element.dispatchEvent(event);
+        }
+    }
+
+    class Listener{
+        constructor(element, recognizer){
+
+            let isListeningMouse = false;
+            let contexts = new Map();
+
+            element.addEventListener('mousedown', event => {
+                console.log(event.button);
+                let context = Object.create(null);
+                contexts.set('mouse' + (1 << event.button), context);
+                recognizer.start(event, context);
+                let mousemove = event => {
+                    let button = 1;
+                    while(button<=event.buttons){
+                        if(button & event.buttons){
+                            let key;
+                            if(button === 2)
+                                key = 4;
+                            else if(button === 4)
+                                key = 2;
+                            else
+                                key = button;
+            
+                            let context = contexts.get('mouse'+key);
+                            recognizer.move(event, context);
+                        }
+                        button = button << 1;
+                    }
+                    
+                }
+                let mouseup = event => {
+                    let context = contexts.get('mouse'+(1 << event.button));
+                    recognizer.end(event,context);
+                    contexts.delete('mouse'+(1 << event.button));
+                    if(event.buttons === 0){
+                        document.removeEventListener('mousemove', mousemove);
+                        document.removeEventListener('mouseup', mouseup);
+                        isListeningMouse = false;
+                    }
+                    
+                }
+                if(!isListeningMouse){
+                    document.addEventListener('mousemove', mousemove);
+                    document.addEventListener('mouseup', mouseup);
+                    isListeningMouse = true;
+                }
+                
+            })
+            
+            element.addEventListener('touchstart', event=>{
+                for(let touch of event.changedTouches){
+                    let context = Object.create(null);
+                    contexts.set(touch.identifier, context);
+                    recognizer.start(touch, context);
+                }
+            })
+            
+            element.addEventListener('touchmove', event=>{
+                for(let touch of event.changedTouches){
+                    let context = contexts.get(touch.identifier);
+                    recognizer.move(touch, context);
+                }
+            })
+            
+            element.addEventListener('touchend', event=>{
+                for(let touch of event.changedTouches){
+                    let context = contexts.get(touch.identifier);
+                    recognizer.end(touch, context);
+                    contexts.delete(touch.identifier);
+                }
+            })
+            
+            element.addEventListener('touchcancel', event=>{
+                for(let touch of event.changedTouches){
+                    let context = contexts.get(touch.identifier);
+                    recognizer.cancel(touch, context);
+                    contexts.delete(touch.identifier);
+                }
+            })
+        }
+    }
+
+    class Recognizer{
+        constructor(dispatcher){
+            this.dispatcher = dispatcher;
+        }
+        start(pointer, context){
+            // console.log('start', pointer.clientX, pointer.clientY);
+            context.startX = pointer.clientX, context.startY = pointer.clientY;
+            
+            context.points = [{
+                t: Date.now(),
+                x: pointer.clientX,
+                y: pointer.clientY
+            }]
+            context.isTap = true;
+            context.isPan = false;
+            context.isPress = false;
+        
+            context.handler = setTimeout(()=>{
+        
+                context.isTap = false;
+                context.isPan = false;
+                context.isPress = true;
+                
+                context.handler = null;
+                console.log('press');
+                this.dispatcher.dispatch('press', {});
+            },500)
+        }
+        move(pointer, context){
+            let dx = pointer.clientX - context.startX, dy = pointer.clientY - context.startY;
+            if(!context.isPan && dx ** 2 + dy ** 2 > 100){
+                context.isTap = false;
+                context.isPan = true;
+                context.isPress = false;
+                context.isVertical = Math.abs(dx) < Math.abs(dy);
+                console.log('panstart');
+                this.dispatcher.dispatch('panstart', {
+                    startX: context.startX,
+                    startY: context.startY,
+                    clientX: pointer.clientX,
+                    clientY: pointer.clientY,
+                    isVertical: context.isVertical
+                });
+                clearTimeout(context.handler);
+            }
+            if(context.isPan){
+                console.log(dx, dy);
+                console.log('pan');
+                this.dispatcher.dispatch('pan', {
+                    startX: context.startX,
+                    startY: context.startY,
+                    clientX: pointer.clientX,
+                    clientY: pointer.clientY,
+                    isVertical: context.isVertical
+                });
+            }
+            context.points = context.points.filter(pointer => {
+                return (Date.now() - pointer.t) < 500
+            })
+            context.points.push({
+                t: Date.now(),
+                x: pointer.clientX,
+                y: pointer.clientY
+            })
+            // console.log('move', pointer.clientX, pointer.clientY);
+        }
+        end(pointer, context){
+            if(context.isTap){
+                this.dispatcher.dispatch('tap', {});
+                clearTimeout(context.handler);
+            }
+            
+            if(context.isPress){
+                this.dispatcher.dispatch('pressend', {});
+                console.log('pressend');
+            }
+            
+            context.points = context.points.filter(pointer=> {
+                return (Date.now() - pointer.t) < 500;
+            });
+
+            let d,v;
+            if(!context.points.length){
+                v = 0;
+            }else{
+                d = Math.sqrt((pointer.clientX - context.points[0].x) ** 2 + (pointer.clientY - context.points[0].y) ** 2);
+                v = d / (Date.now() - context.points[0].t);
+            }
+        
+            if(v > 1.5){
+                console.log('flick');
+                this.dispatcher.dispatch('flick', {
+                    startX: context.startX,
+                    startY: context.startY,
+                    clientX: pointer.clientX,
+                    clientY: pointer.clientY,
+                    isVertical: context.isVertical,
+                    isFlick: context.isFlick,
+                    velocity: v
+                });
+                context.isFlick = true;
+            }else{
+                context.isFlick = false;
+            }
+
+            if(context.isVertical) {
+                this.dispatcher.dispatch('panend', {
+                    startX: context.startX,
+                    startY: context.startY,
+                    clientX: pointer.clientX,
+                    clientY: pointer.clientY,
+                    isVertical: context.isVertical,
+                    isFlick: context.isFlick
+                });
+            }
+            
+            console.log('v='+v);
+            // console.log('end', pointer.clientX, pointer.clientY);
+        }
+        cancel(pointer, context){
+            clearTimeout(context.handler);
+            this.dispatcher.dispatch('cancel', {});
+            // console.log('cancel', pointer.clientX, pointer.clientY);
+        }
+    }
+
+    function enableGesture(element){
+        debugger;
+        new Listener(element, new Recognizer(new Dispatcher(element)))
+    }
+
+    enableGesture(document.documentElement);
+    document.documentElement.addEventListener('tap', event=>{
+        console.log('tap event trigger');
+    })
+</script>
